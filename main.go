@@ -25,15 +25,17 @@ type CIDRList struct {
 }
 
 type SubdomainInfo struct {
-        Subdomain string
-        IP        string
-        Region    string
+        Subdomain string `json:"subdomain"`
+        IP        string `json:"ip"`
+        Region    string `json:"region"`
+        Service   string `json:"service"`
 }
 
 func main() {
         // Command-line flags
         ipOnly := flag.Bool("iponly", true, "Output only the IP address")
-        verbose := flag.Bool("v", false, "Verbose output with IP, region, and subdomain")
+        verbose := flag.Bool("v", false, "Output IP, region, and subdomain")
+        jsonOutput := flag.Bool("json", false, "Output in JSON format")
         flag.Parse()
 
         // Read the JSON file containing CIDR mappings
@@ -93,6 +95,7 @@ func main() {
                                                   Subdomain: subdomain,
                                                   IP:        ip.String(),
                                                   Region:    cidr.Region,
+                                                  Service:   cidr.Service,
                                                 }
 
                                                 subdomainInfo <- info
@@ -109,15 +112,10 @@ func main() {
         }()
 
         // Print the results
-        for info := range subdomainInfo {
-                if *verbose {
-                        fmt.Println("Subdomain:", info.Subdomain)
-                        fmt.Println("IP:", info.IP)
-                        fmt.Println("Region:", info.Region)
-                        fmt.Println()
-                } else if *ipOnly {
-                        fmt.Println(info.IP)
-                }
+        if *jsonOutput {
+                printJSONResults(subdomainInfo)
+        } else {
+                printResults(subdomainInfo, *ipOnly, *verbose)
         }
 }
 
@@ -161,4 +159,37 @@ func getIPAddresses(domain string) ([]net.IP, error) {
         }
 
         return ipAddresses, nil
+}
+
+func printJSONResults(results chan SubdomainInfo) {
+        infoList := []SubdomainInfo{}
+        for info := range results {
+                infoList = append(infoList, info)
+        }
+
+        jsonBytes, err := json.MarshalIndent(infoList, "", "    ")
+        if err != nil {
+                fmt.Println("Error encoding JSON:", err)
+                return
+        }
+
+        fmt.Println(string(jsonBytes))
+}
+
+func printResults(results chan SubdomainInfo, ipOnly bool, verbose bool) {
+        for info := range results {
+                if ipOnly {
+                        fmt.Println(info.IP)
+                } else {
+                        if verbose {
+                                fmt.Println("Subdomain:", info.Subdomain)
+                                fmt.Println("IP:", info.IP)
+                                fmt.Println("Region:", info.Region)
+                                fmt.Println("Service:", info.Service)
+                                fmt.Println()
+                        } else {
+                                fmt.Printf("%s\t%s\t%s\n", info.Subdomain, info.IP, info.Region)
+                        }
+                }
+        }
 }
