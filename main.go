@@ -3,6 +3,7 @@ package main
 import (
         "bufio"
         "encoding/json"
+        "flag"
         "fmt"
         "io/ioutil"
         "net"
@@ -30,6 +31,11 @@ type SubdomainInfo struct {
 }
 
 func main() {
+        // Command-line flags
+        ipOnly := flag.Bool("iponly", true, "Output only the IP address")
+        verbose := flag.Bool("v", false, "Verbose output with IP, region, and subdomain")
+        flag.Parse()
+
         // Read the JSON file containing CIDR mappings
         jsonFile, err := os.Open("cidr_mappings.json")
         if err != nil {
@@ -104,10 +110,14 @@ func main() {
 
         // Print the results
         for info := range subdomainInfo {
-                fmt.Println("Subdomain:", info.Subdomain)
-                fmt.Println("IP:", info.IP)
-                fmt.Println("Region:", info.Region)
-                fmt.Println()
+                if *verbose {
+                        fmt.Println("Subdomain:", info.Subdomain)
+                        fmt.Println("IP:", info.IP)
+                        fmt.Println("Region:", info.Region)
+                        fmt.Println()
+                } else if *ipOnly {
+                        fmt.Println(info.IP)
+                }
         }
 }
 
