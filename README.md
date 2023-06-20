@@ -1,5 +1,5 @@
 # hangip
-Takes in a JSON file of CDIRs and matches subdomains to their IPs
+Takes in a JSON file of CIDRs and matches subdomains to their IPs
 
 Note that `cidr_mappings.json` should be a JSON file including the CIDR mappings including IP range, region, and company, such as the following format:
 ```
