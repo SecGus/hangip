@@ -2,7 +2,9 @@ package main
 
 import (
         "bufio"
+        "database/sql"
         "encoding/json"
+        "encoding/base64"
         "flag"
         "fmt"
         "io/ioutil"
@@ -11,6 +13,8 @@ import (
         "os/exec"
         "strings"
         "sync"
+
+        _ "github.com/go-sql-driver/mysql"
 )
 
 type CIDRMapping struct {
@@ -31,12 +35,56 @@ type SubdomainInfo struct {
         Service   string `json:"service"`
 }
 
+type DBConfig struct {
+        Username string
+        Password string
+        IP       string
+        Port     string
+        DBName   string
+        BBP      string
+}
+
+func (dbConfig *DBConfig) IsSet() bool {
+        return dbConfig.Username != "" && dbConfig.Password != "" && dbConfig.IP != "" && dbConfig.DBName != "" && dbConfig.BBP != ""
+}
+
 func main() {
         // Command-line flags
         verbose := flag.Bool("v", false, "Output IP, region, and subdomain")
         jsonOutput := flag.Bool("json", false, "Output in JSON format")
         cidrFile := flag.String("c", "cidr_mappings.json", "Path to the CIDR mapping file")
+
+        // Database flags
+        dbUsername := flag.String("dbu", "", "Database username (If any of the `db` arguments are specified, all should be specified)")
+        dbPassword := flag.String("dbp", "", "Database password")
+        dbIP := flag.String("dbip", "", "Database IP")
+        dbPort := flag.String("dbport", "3306", "Database port")
+        dbName := flag.String("dbd", "", "Database name")
+        bbp := flag.String("dbbp", "", "BBP for database")
         flag.Parse()
+
+        // Define the dbConfig
+        dbConfig := DBConfig{
+                Username: *dbUsername,
+                Password: *dbPassword,
+                IP:       *dbIP,
+                Port:     *dbPort,
+                DBName:   *dbName,
+                BBP:      *bbp,
+        }
+
+        // Connect to the database if database information is provided
+        var db *sql.DB
+        var err error
+
+        if dbConfig.IsSet() {
+                db, err = connectToDB(dbConfig)
+                if err != nil {
+                        fmt.Println("Error connecting to database:", err)
+                        return
+                }
+                defer db.Close()
+        }
 
         // Read the JSON file containing CIDR mappings
         jsonFile, err := os.Open(*cidrFile)
@@ -69,8 +117,9 @@ func main() {
         var wg sync.WaitGroup
         wg.Add(len(subdomains))
 
+        // Process each subdomain
         for _, subdomain := range subdomains {
-                go func(subdomain string) {
+                go func(subdomain string, db *sql.DB, dbConfig DBConfig) {
                         defer wg.Done()
 
                         ipAddresses, err := getIPAddresses(subdomain)
@@ -99,11 +148,18 @@ func main() {
                                                 }
 
                                                 subdomainInfo <- info
+
+                                                if db != nil {
+                                                        if err := insertData(db, info, dbConfig.BBP); err != nil {
+                                                                fmt.Println("Error inserting data:", err)
+                                                        }
+                                                }
+
                                                 break
                                         }
                                 }
                         }
-                }(subdomain)
+                }(subdomain, db, dbConfig)
         }
 
         go func() {
@@ -117,6 +173,22 @@ func main() {
         } else {
                 printResults(subdomainInfo, *verbose)
         }
+}
+
+func connectToDB(dbConfig DBConfig) (*sql.DB, error) {
+        conn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", dbConfig.Username, dbConfig.Password, dbConfig.IP, dbConfig.Port, dbConfig.DBName)
+        db, err := sql.Open("mysql", conn)
+        if err != nil {
+                return nil, err
+        }
+
+        return db, nil
+}
+
+func insertData(db *sql.DB, info SubdomainInfo, bbp string) error {
+        query := `INSERT INTO ips (id, subdomain, ip, region, service, bbp) VALUES (?, ?, ?, ?, ?, ?)`
+        _, err := db.Exec(query, base64.StdEncoding.EncodeToString([]byte(info.IP+":"+info.Subdomain)), info.Subdomain, info.IP, info.Region, info.Service, bbp)
+        return err
 }
 
 func readSubdomains() ([]string, error) {
