@@ -51,6 +51,7 @@ Note installation does not include instructions to DB setup.
 ```
 git clone https://github.com/SecGus/hangip.git
 cd hangip
+go get github.com/go-sql-driver/mysql
 go build main.go
 mv ./main /usr/bin/hangip
 ```
