@@ -4,7 +4,7 @@ import (
         "bufio"
         "database/sql"
         "encoding/json"
-        "encoding/base64"
+        "crypto/sha1"
         "flag"
         "fmt"
         "io/ioutil"
@@ -186,8 +186,11 @@ func connectToDB(dbConfig DBConfig) (*sql.DB, error) {
 }
 
 func insertData(db *sql.DB, info SubdomainInfo, bbp string) error {
+        h := sha1.New()
+        h.Write([]byte(info.IP + ":" + info.Subdomain))
+        hashed := h.Sum(nil)
         query := `INSERT INTO ips (id, subdomain, ip, region, service, bbp) VALUES (?, ?, ?, ?, ?, ?)`
-        _, err := db.Exec(query, base64.StdEncoding.EncodeToString([]byte(info.IP+":"+info.Subdomain)), info.Subdomain, info.IP, info.Region, info.Service, bbp)
+        _, err := db.Exec(query, fmt.Sprintf("%x", hashed), info.Subdomain, info.IP, info.Region, info.Service, bbp)
         return err
 }
 
